@@ -6,6 +6,8 @@ import QRCode from "qrcode";
 import { collection, onSnapshot, doc, getDoc } from "firebase/firestore";
 import { db } from "@/src/lib/firebase";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -24,6 +26,7 @@ import {
   RotateCcw,
   StopCircle,
   Plus,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 import type { MataKuliah } from "@/src/types";
 
@@ -43,7 +46,7 @@ interface Pertemuan {
 export default function QrGeneratorPage() {
   const router = useRouter();
   const [matkulList, setMatkulList] = useState<(MataKuliah & { code: string })[]>([]);
-  const [pertemuanList, setPertemuanList] = useState<Pertemuan[]>([]);
+  const [pertemuanMap, setPertemuanMap] = useState<Map<number, Pertemuan>>(new Map());
   const [selectedMatkul, setSelectedMatkul] = useState("");
   const [selectedPertemuan, setSelectedPertemuan] = useState("");
   const [durasi, setDurasi] = useState("15");
@@ -54,6 +57,14 @@ export default function QrGeneratorPage() {
   const [countdown, setCountdown] = useState("");
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [creatingPertemuan, setCreatingPertemuan] = useState(false);
+
+  // Form untuk buat pertemuan baru
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newPertemuanNum, setNewPertemuanNum] = useState<number | null>(null);
+  const [newTanggal, setNewTanggal] = useState("");
+  const [newJamMulai, setNewJamMulai] = useState("");
+  const [newJamSelesai, setNewJamSelesai] = useState("");
 
   // Fetch matkul
   useEffect(() => {
@@ -66,29 +77,47 @@ export default function QrGeneratorPage() {
     return () => unsub();
   }, []);
 
-  // Fetch pertemuan saat matkul dipilih
+  // Fetch pertemuan saat matkul dipilih, lalu map ke 16 slot
   useEffect(() => {
     if (!selectedMatkul) {
-      setPertemuanList([]);
+      setPertemuanMap(new Map());
+      setSelectedPertemuan("");
       return;
     }
 
     const unsub = onSnapshot(
       collection(db, "pertemuan"),
       (snap) => {
-        const data = snap.docs
+        const existing = snap.docs
           .filter((d) => d.data().courseId === selectedMatkul)
-          .map((d) => ({ id: d.id, ...d.data() } as unknown as Pertemuan))
-          .sort((a, b) => a.nomorPertemuan - b.nomorPertemuan);
-        setPertemuanList(data);
+          .map((d) => ({ id: d.id, ...d.data() } as unknown as Pertemuan));
+
+        const map = new Map<number, Pertemuan>();
+        existing.forEach((p) => {
+          map.set(p.nomorPertemuan, p);
+        });
+        setPertemuanMap(map);
       }
     );
     return () => unsub();
   }, [selectedMatkul]);
 
+  // Saat matkul dipilih, set default jam dari jadwal matkul
+  useEffect(() => {
+    if (selectedMatkul) {
+      const matkul = matkulList.find((m) => m.code === selectedMatkul);
+      if (matkul) {
+        setNewJamMulai(matkul.jamMulai || "");
+        setNewJamSelesai(matkul.jamSelesai || "");
+        // Set default tanggal ke hari ini
+        setNewTanggal(new Date().toISOString().split("T")[0]);
+      }
+    }
+  }, [selectedMatkul, matkulList]);
+
   // Real-time listener untuk QR status
   useEffect(() => {
-    if (!selectedPertemuan) return;
+    if (!selectedPertemuan || selectedPertemuan.startsWith("NEW_")) return;
 
     const unsub = onSnapshot(
       doc(db, "pertemuan", selectedPertemuan),
@@ -133,9 +162,69 @@ export default function QrGeneratorPage() {
     return () => clearInterval(interval);
   }, [expiresAt, isQrActive]);
 
+  const handleSelectPertemuan = (value: string) => {
+    setSelectedPertemuan(value);
+    setQrImage("");
+    setIsQrActive(false);
+
+    if (value.startsWith("NEW_")) {
+      const nomor = parseInt(value.replace("NEW_", ""));
+      setNewPertemuanNum(nomor);
+      setShowCreateForm(true);
+    } else {
+      setShowCreateForm(false);
+      setNewPertemuanNum(null);
+    }
+  };
+
+  const handleCreatePertemuan = async () => {
+    if (!selectedMatkul || !newPertemuanNum) return;
+    if (!newTanggal || !newJamMulai || !newJamSelesai) {
+      toast.error("Tanggal, jam mulai, dan jam selesai wajib diisi");
+      return;
+    }
+
+    setCreatingPertemuan(true);
+    try {
+      const matkul = matkulList.find((m) => m.code === selectedMatkul);
+      const res = await fetch("/api/pertemuan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          courseId: selectedMatkul,
+          courseName: matkul?.name || "",
+          nomorPertemuan: newPertemuanNum,
+          tanggal: newTanggal,
+          jamMulai: newJamMulai,
+          jamSelesai: newJamSelesai,
+          enrolledNpms: [],
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Pertemuan ${newPertemuanNum} berhasil dibuat`);
+        setShowCreateForm(false);
+        // Tunggu onSnapshot update, lalu auto-select pertemuan baru
+        // (listener akan update pertemuanMap dan dropdown akan refresh)
+      } else {
+        throw new Error(data.error || "Gagal membuat pertemuan");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal membuat pertemuan");
+    } finally {
+      setCreatingPertemuan(false);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!selectedPertemuan) {
       toast.error("Pilih pertemuan terlebih dahulu");
+      return;
+    }
+
+    if (selectedPertemuan.startsWith("NEW_")) {
+      toast.error("Pertemuan belum dibuat. Isi form dan klik 'Buat Pertemuan' dulu.");
       return;
     }
 
@@ -172,7 +261,7 @@ export default function QrGeneratorPage() {
   };
 
   const handleDeactivate = async () => {
-    if (!selectedPertemuan) return;
+    if (!selectedPertemuan || selectedPertemuan.startsWith("NEW_")) return;
     try {
       const res = await fetch(`/api/pertemuan/${selectedPertemuan}/deactivate-qr`, {
         method: "POST",
@@ -188,25 +277,34 @@ export default function QrGeneratorPage() {
   };
 
   const handleExtend = async () => {
-    if (!selectedPertemuan) return;
+    if (!selectedPertemuan || selectedPertemuan.startsWith("NEW_")) return;
     await handleGenerate(); // Re-generate dengan durasi baru
   };
 
   const openFullscreen = () => {
-    if (!selectedPertemuan || !qrPayload) return;
+    if (!selectedPertemuan || !qrPayload || selectedPertemuan.startsWith("NEW_")) return;
     const url = `/absensi/qr/fullscreen?pertemuanId=${selectedPertemuan}&payload=${encodeURIComponent(qrPayload)}`;
     window.open(url, "_blank", "width=800,height=800");
   };
 
-  const selectedPertemuanData = pertemuanList.find((p) => p.id === selectedPertemuan);
+  const selectedPertemuanData = pertemuanMap.get(
+    selectedPertemuan && !selectedPertemuan.startsWith("NEW_")
+      ? parseInt(selectedPertemuan) || 0
+      : 0
+  );
   const selectedMatkulData = matkulList.find((m) => m.code === selectedMatkul);
+
+  // Derive nomor pertemuan dari selected value
+  const selectedNomor = selectedPertemuan.startsWith("NEW_")
+    ? parseInt(selectedPertemuan.replace("NEW_", ""))
+    : selectedPertemuanData?.nomorPertemuan || 0;
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-[#1B2E4B]">Generate QR Absensi</h2>
         <p className="text-sm text-slate-500 mt-1">
-          Generate QR Code untuk absensi mahasiswa
+          Generate QR Code untuk absensi mahasiswa (16 pertemuan per mata kuliah)
         </p>
       </div>
 
@@ -219,9 +317,9 @@ export default function QrGeneratorPage() {
           <CardContent className="space-y-4">
             {/* Pilih Mata Kuliah */}
             <div className="space-y-2">
-              <Label>Mata Kuliah *</Label>
+              <Label htmlFor="matkul">Mata Kuliah *</Label>
               <Select value={selectedMatkul} onValueChange={setSelectedMatkul}>
-                <SelectTrigger>
+                <SelectTrigger id="matkul">
                   <SelectValue placeholder="Pilih mata kuliah" />
                 </SelectTrigger>
                 <SelectContent>
@@ -234,30 +332,129 @@ export default function QrGeneratorPage() {
               </Select>
             </div>
 
-            {/* Pilih Pertemuan */}
+            {/* Pilih Pertemuan (16 Slot) */}
             <div className="space-y-2">
-              <Label>Pertemuan *</Label>
-              <Select value={selectedPertemuan} onValueChange={setSelectedPertemuan}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pilih pertemuan" />
+              <Label htmlFor="pertemuan">Pertemuan *</Label>
+              <Select
+                value={selectedPertemuan}
+                onValueChange={handleSelectPertemuan}
+                disabled={!selectedMatkul}
+              >
+                <SelectTrigger id="pertemuan">
+                  <SelectValue placeholder={selectedMatkul ? "Pilih pertemuan 1-16" : "Pilih matkul dulu"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {pertemuanList.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      Pertemuan {p.nomorPertemuan} - {p.jamMulai} s/d {p.jamSelesai}
+                  {selectedMatkul ? (
+                    Array.from({ length: 16 }, (_, i) => {
+                      const nomor = i + 1;
+                      const existing = pertemuanMap.get(nomor);
+
+                      return (
+                        <SelectItem
+                          key={existing?.id || `NEW_${nomor}`}
+                          value={existing?.id || `NEW_${nomor}`}
+                        >
+                          {existing ? (
+                            <span>
+                              Pertemuan {nomor} — {existing.jamMulai} s/d {existing.jamSelesai}
+                              {" "}
+                              <span className="text-xs text-green-600 font-medium">
+                                (Sudah dibuat)
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">
+                              Pertemuan {nomor} — Belum dibuat
+                            </span>
+                          )}
+                        </SelectItem>
+                      );
+                    })
+                  ) : (
+                    <SelectItem value="__placeholder__" disabled>
+                      Pilih mata kuliah terlebih dahulu
                     </SelectItem>
-                  ))}
+                  )}
                 </SelectContent>
               </Select>
-              {pertemuanList.length === 0 && selectedMatkul && (
+              {selectedMatkul && pertemuanMap.size === 0 && (
                 <p className="text-xs text-slate-400">
-                  Belum ada pertemuan untuk matkul ini
+                  Belum ada pertemuan yang dibuat untuk matkul ini. Pilih nomor pertemuan untuk membuat baru.
                 </p>
               )}
             </div>
 
+            {/* Form Buat Pertemuan Baru */}
+            {showCreateForm && newPertemuanNum && (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+                <div className="flex items-center gap-2 text-amber-800 font-medium">
+                  <Plus className="w-4 h-4" />
+                  <span>Buat Pertemuan {newPertemuanNum}</span>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="tanggal">Tanggal *</Label>
+                  <Input
+                    id="tanggal"
+                    type="date"
+                    value={newTanggal}
+                    onChange={(e) => setNewTanggal(e.target.value)}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="jamMulai">Jam Mulai *</Label>
+                    <Input
+                      id="jamMulai"
+                      type="time"
+                      value={newJamMulai}
+                      onChange={(e) => setNewJamMulai(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="jamSelesai">Jam Selesai *</Label>
+                    <Input
+                      id="jamSelesai"
+                      type="time"
+                      value={newJamSelesai}
+                      onChange={(e) => setNewJamSelesai(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowCreateForm(false);
+                      setSelectedPertemuan("");
+                    }}
+                  >
+                    Batal
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleCreatePertemuan}
+                    disabled={creatingPertemuan}
+                    className="bg-[#2563EB] hover:bg-[#1d4ed8]"
+                  >
+                    {creatingPertemuan ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        Membuat...
+                      </>
+                    ) : (
+                      "Buat Pertemuan"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Info Pertemuan */}
-            {selectedPertemuanData && (
+            {selectedPertemuanData && !showCreateForm && (
               <div className="p-3 bg-slate-50 rounded-lg text-sm space-y-1">
                 <p>
                   <span className="text-slate-500">Tanggal:</span>{" "}
@@ -274,9 +471,9 @@ export default function QrGeneratorPage() {
 
             {/* Durasi */}
             <div className="space-y-2">
-              <Label>Durasi QR Valid</Label>
+              <Label htmlFor="durasi">Durasi QR Valid</Label>
               <Select value={durasi} onValueChange={setDurasi}>
-                <SelectTrigger>
+                <SelectTrigger id="durasi">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -292,7 +489,7 @@ export default function QrGeneratorPage() {
             {/* Tombol Generate */}
             <Button
               onClick={handleGenerate}
-              disabled={generating || !selectedPertemuan}
+              disabled={generating || !selectedPertemuan || selectedPertemuan.startsWith("NEW_")}
               className="w-full bg-[#2563EB] hover:bg-[#1d4ed8] h-12 text-base"
             >
               {generating ? (
@@ -309,7 +506,7 @@ export default function QrGeneratorPage() {
             </Button>
 
             {/* Status & Actions */}
-            {isQrActive && (
+            {isQrActive && !showCreateForm && (
               <div className="space-y-3 pt-2">
                 <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                   <div className="flex items-center gap-2">
@@ -345,7 +542,7 @@ export default function QrGeneratorPage() {
               </div>
             )}
 
-            {countdown === "EXPIRED" && (
+            {countdown === "EXPIRED" && !showCreateForm && (
               <div className="p-3 bg-red-50 rounded-lg text-center">
                 <p className="text-sm font-medium text-red-700">QR Sudah Expired</p>
                 <Button variant="outline" size="sm" onClick={handleGenerate} className="mt-2">
@@ -373,7 +570,7 @@ export default function QrGeneratorPage() {
                 <div className="space-y-1">
                   <p className="font-semibold text-lg">{selectedMatkulData?.name}</p>
                   <p className="text-sm text-slate-500">
-                    Pertemuan {selectedPertemuanData?.nomorPertemuan} |{" "}
+                    Pertemuan {selectedPertemuanData?.nomorPertemuan || selectedNomor} |{" "}
                     {selectedPertemuanData?.tanggal
                       ? new Date(selectedPertemuanData.tanggal).toLocaleDateString("id-ID")
                       : ""}
@@ -394,7 +591,7 @@ export default function QrGeneratorPage() {
               <div className="text-center text-slate-400">
                 <QrCode className="w-16 h-16 mx-auto mb-3 opacity-30" />
                 <p>QR Code akan ditampilkan di sini</p>
-                <p className="text-xs mt-1">Generate QR untuk memulai</p>
+                <p className="text-xs mt-1">Pilih mata kuliah dan pertemuan, lalu Generate QR</p>
               </div>
             )}
           </CardContent>
@@ -402,9 +599,4 @@ export default function QrGeneratorPage() {
       </div>
     </div>
   );
-}
-
-// Simple Label component
-function Label({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm font-medium text-slate-700">{children}</p>;
 }

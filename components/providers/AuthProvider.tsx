@@ -41,9 +41,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await res.json();
         if (data.user) {
           setUser(data.user);
+        } else {
+          // Session tidak valid, force sign out dari Firebase client
+          await signOut(auth);
         }
       } catch {
-        // Silent fail
+        // Session error, force sign out dari Firebase client
+        await signOut(auth);
       } finally {
         setIsLoading(false);
       }

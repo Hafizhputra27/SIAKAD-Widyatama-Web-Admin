@@ -71,6 +71,7 @@ export interface Dosen {
   name: string;
   title: string;
   email: string;
+  department: string;
 }
 
 export interface Admin {
