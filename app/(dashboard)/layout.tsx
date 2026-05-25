@@ -13,9 +13,8 @@ export default async function DashboardLayout({
   // Auth guard: cek session cookie di server
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get("session")?.value;
-  const legacyCookie = cookieStore.get("siakad-auth")?.value;
 
-  if (!sessionCookie && legacyCookie !== "authenticated") {
+  if (!sessionCookie) {
     redirect("/login");
   }
 

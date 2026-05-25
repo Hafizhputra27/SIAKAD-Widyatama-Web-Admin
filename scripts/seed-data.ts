@@ -1,6 +1,5 @@
 import dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
-import { hashPassword } from "../src/lib/password-utils";
 
 let adminDb: any;
 
@@ -152,6 +151,65 @@ async function migrateCourses() {
   console.log(`   ✅ ${updated} dokumen courses di-update.`);
 }
 
+async function seedLecturers() {
+  console.log("🌱 Seeding lecturers...");
+  const lecturersRef = adminDb.collection("lecturers");
+  const existing = await lecturersRef.limit(1).get();
+
+  if (!existing.empty) {
+    console.log("   ⚠️  Lecturers sudah ada, skip.");
+    return;
+  }
+
+  const lecturersData = [
+    {
+      nidn: "001",
+      name: "Dani Hamdani, S.Kom., M.T.",
+      title: "S.Kom., M.T.",
+      email: "dani@widyatama.ac.id",
+      department: "Pemrograman Mobile",
+    },
+    {
+      nidn: "002",
+      name: "IR. Sri Lestari, M.T.",
+      title: "M.T.",
+      email: "sri@widyatama.ac.id",
+      department: "Statistika",
+    },
+    {
+      nidn: "003",
+      name: "Rosalin Samihardjo, S.T., M.Kom.",
+      title: "S.T., M.Kom.",
+      email: "rosalin@widyatama.ac.id",
+      department: "Analisis dan Perancangan Sistem Informasi",
+    },
+    {
+      nidn: "004",
+      name: "DR. R.A.E. Virgana Targa Sapanji, S.Kom., M.T.",
+      title: "S.Kom., M.T.",
+      email: "virgana@widyatama.ac.id",
+      department: "Keamanan Sistem Informasi",
+    },
+    {
+      nidn: "005",
+      name: "Ir. Ucu Nugraha, S.T., M.Kom., IPM., MOS",
+      title: "S.T., M.Kom., IPM., MOS",
+      email: "ucu@widyatama.ac.id",
+      department: "Manajemen Resiko TI",
+    },
+  ];
+
+  for (const data of lecturersData) {
+    const docRef = lecturersRef.doc(data.nidn);
+    await docRef.set({
+      ...data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    console.log(`   ✅ Dosen ${data.nidn} - ${data.name} berhasil ditambahkan.`);
+  }
+}
+
 async function main() {
   console.log("🚀 SIAKAD Seeder Started\n");
 
@@ -163,6 +221,7 @@ async function main() {
     }
 
     await seedAdmins();
+    await seedLecturers();
     await seedPertemuan();
     await migratePresensi();
     await migrateCourses();
@@ -170,7 +229,9 @@ async function main() {
     console.log("\n✨ Seeding selesai!");
     console.log("\n📋 Catatan:");
     console.log("   - Buka Firebase Console → Firestore untuk memverifikasi data.");
-    console.log("   - Untuk admin: buat akun di Firebase Authentication, lalu update UID di dokumen admins/");
+    console.log("   - Untuk login admin: jalankan POST /api/auth/setup-admin lalu login dengan:");
+    console.log("     Email: admin@widyatama.ac.id");
+    console.log("     Password: admin123");
   } catch (error) {
     console.error("\n❌ Seeding gagal:", error);
     process.exit(1);

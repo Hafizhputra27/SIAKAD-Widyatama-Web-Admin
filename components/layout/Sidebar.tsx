@@ -24,6 +24,7 @@ import {
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/" },
   { icon: Users, label: "Mahasiswa", href: "/mahasiswa" },
+  { icon: GraduationCap, label: "Dosen", href: "/dosen" },
   { icon: BookOpen, label: "Mata Kuliah", href: "/mata-kuliah" },
   { icon: Calendar, label: "Jadwal", href: "/jadwal" },
   { icon: DoorOpen, label: "Ruangan", href: "/ruangan" },

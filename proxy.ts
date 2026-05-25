@@ -3,8 +3,7 @@ import type { NextRequest } from "next/server";
 
 export function proxy(request: NextRequest) {
   const sessionCookie = request.cookies.get("session")?.value;
-  const legacyCookie = request.cookies.get("siakad-auth")?.value;
-  const isAuthenticated = !!sessionCookie || legacyCookie === "authenticated";
+  const isAuthenticated = !!sessionCookie;
 
   const { pathname } = request.nextUrl;
 
