@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/src/lib/firebase-admin";
 import type { MataKuliah } from "@/src/types";
+import { generatePertemuanDates } from "@/lib/date-utils";
 
 // GET: List semua matkul dengan filter
 export async function GET(request: Request) {
@@ -127,6 +128,36 @@ export async function POST(request: Request) {
     };
 
     await adminDb.collection("courses").doc(code).set(matkulData);
+
+    // Auto-create 16 pertemuan
+    try {
+      const pertemuanDates = generatePertemuanDates(hari, jamMulai, finalJamSelesai);
+      const batch = adminDb.batch();
+
+      pertemuanDates.forEach((pt, index) => {
+        const docRef = adminDb.collection("pertemuan").doc();
+        batch.set(docRef, {
+          id: docRef.id,
+          courseId: code,
+          courseName: name,
+          nomorPertemuan: index + 1,
+          tanggal: pt.tanggal,
+          jamMulai: pt.jamMulai,
+          jamSelesai: pt.jamSelesai,
+          qrToken: "",
+          qrExpiresAt: null,
+          isQrActive: false,
+          enrolledNpms: [],
+          createdBy: "system",
+          createdAt: new Date(),
+        });
+      });
+
+      await batch.commit();
+    } catch (err) {
+      console.error("Error auto-creating pertemuan:", err);
+      // Tidak fail matkul creation jika pertemuan gagal
+    }
 
     return NextResponse.json(
       { message: "Mata kuliah berhasil ditambahkan", data: { code, name } },

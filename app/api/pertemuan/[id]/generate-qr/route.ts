@@ -49,12 +49,12 @@ export async function POST(
         updatedAt: new Date(),
       });
 
-    // Buat payload JSON untuk QR
+    // Buat payload JSON untuk QR (ISO 8601 untuk mobile, Unix timestamp tetap di response)
     const payload = {
       token,
       courseId,
       pertemuanId: id,
-      expiresAt: expiresAtUnix,
+      expiresAt: expiresAt.toISOString(),
     };
 
     const qrPayload = JSON.stringify(payload);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -17,15 +17,20 @@ import { toast } from "react-hot-toast";
 import { collection, onSnapshot, doc, getDoc } from "firebase/firestore";
 import { db } from "@/src/lib/firebase";
 import type { MataKuliah } from "@/src/types";
-import { Loader2, Save, FileSpreadsheet, Search, GraduationCap, BookOpen } from "lucide-react";
+import { Loader2, Search, GraduationCap, BookOpen, BarChart3, Eye } from "lucide-react";
 
-interface NilaiRow {
-  npm: string;
+interface RekapRow {
+  code: string;
   name: string;
-  nilaiAngka: number | "";
-  nilaiHuruf: string;
-  mutu: number;
-  status: string;
+  sks: number;
+  semester: number;
+  lecturer: string;
+  totalMahasiswa: number;
+  avgNilai: number;
+  avgHuruf: string;
+  lulusCount: number;
+  tidakLulusCount: number;
+  belumDinilai: number;
 }
 
 function angkaToHuruf(n: number): string {
@@ -36,18 +41,12 @@ function angkaToHuruf(n: number): string {
   return "E";
 }
 
-function hurufToMutu(h: string): number {
-  const map: Record<string, number> = { A: 4.0, B: 3.0, C: 2.0, D: 1.0, E: 0.0 };
-  return map[h] ?? 0;
-}
-
 export default function NilaiPage() {
   const [matkulList, setMatkulList] = useState<(MataKuliah & { code: string })[]>([]);
-  const [selectedMatkul, setSelectedMatkul] = useState("");
-  const [nilaiData, setNilaiData] = useState<NilaiRow[]>([]);
+  const [nilaiData, setNilaiData] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [searchNpm, setSearchNpm] = useState("");
+  const [filterSemester, setFilterSemester] = useState("all");
+  const [searchMatkul, setSearchMatkul] = useState("");
 
   // Tab transkrip
   const [transkripNpm, setTranskripNpm] = useState("");
@@ -55,98 +54,80 @@ export default function NilaiPage() {
   const [transkripNilai, setTranskripNilai] = useState<Record<string, unknown>[]>([]);
   const [loadingTranskrip, setLoadingTranskrip] = useState(false);
 
+  // Detail modal
+  const [selectedDetailMatkul, setSelectedDetailMatkul] = useState<string | null>(null);
+
   useEffect(() => {
+    setLoading(true);
     const unsub = onSnapshot(collection(db, "courses"), (snap) => {
       const data = snap.docs
         .map((d) => ({ code: d.id, ...d.data() } as MataKuliah & { code: string }))
         .filter((m) => m.isActive !== false);
       setMatkulList(data);
-      setLoading(false);
     });
     return () => unsub();
   }, []);
 
-  // Fetch enrolled mahasiswa + nilai saat matkul dipilih
+  // Fetch nilai for all matkul
   useEffect(() => {
-    if (!selectedMatkul) {
-      setNilaiData([]);
-      return;
-    }
-    setLoading(true);
-
-    async function fetchData() {
-      // Ambil pertemuan untuk dapat enrolledNpms
-      const pertemuanSnap = await getDoc(doc(db, "pertemuan", `${selectedMatkul}_1`));
-      // Fallback: fetch dari API
+    async function fetchAllNilai() {
+      const result: Record<string, any[]> = {};
       try {
-        const res = await fetch(`/api/nilai?courseId=${selectedMatkul}`);
+        const res = await fetch("/api/nilai");
         const apiData = await res.json();
-        const rows: NilaiRow[] = (apiData.data || []).map((n: Record<string, unknown>) => ({
-          npm: n.npm as string,
-          name: (n.mahasiswaName as string) || (n.npm as string),
-          nilaiAngka: (n.nilaiAngka as number) || "",
-          nilaiHuruf: (n.nilaiHuruf as string) || "",
-          mutu: (n.mutu as number) || 0,
-          status: (n.status as string) || "MENGULANG",
-        }));
-        setNilaiData(rows);
-      } catch {
-        setNilaiData([]);
+        // Group by courseId
+        (apiData.data || []).forEach((n: any) => {
+          const cid = n.mataKuliahId as string;
+          if (!result[cid]) result[cid] = [];
+          result[cid].push(n);
+        });
+      } catch (err) {
+        console.error("Error fetching nilai:", err);
       }
+      setNilaiData(result);
       setLoading(false);
     }
 
-    fetchData();
-  }, [selectedMatkul]);
+    fetchAllNilai();
+  }, []);
 
-  const handleNilaiChange = (npm: string, value: string) => {
-    const angka = parseFloat(value);
-    const huruf = !isNaN(angka) ? angkaToHuruf(angka) : "";
-    const mutu = huruf ? hurufToMutu(huruf) : 0;
-    const status = huruf && huruf !== "E" ? "LULUS" : "MENGULANG";
+  const rekapData = useMemo<RekapRow[]>(() => {
+    return matkulList
+      .map((m) => {
+        const nilaiList = nilaiData[m.code] || [];
+        const total = nilaiList.length;
+        const lulus = nilaiList.filter((n) => n.status === "LULUS").length;
+        const tidakLulus = nilaiList.filter((n) => n.status === "TIDAK_LULUS").length;
+        const belum = total - lulus - tidakLulus;
 
-    setNilaiData((prev) =>
-      prev.map((row) =>
-        row.npm === npm
-          ? { ...row, nilaiAngka: value === "" ? "" : angka, nilaiHuruf: huruf, mutu, status }
-          : row
-      )
-    );
-  };
+        const avg =
+          total > 0
+            ? nilaiList.reduce((sum: number, n: any) => sum + (n.nilaiAngka || 0), 0) / total
+            : 0;
 
-  const handleSaveAll = async () => {
-    if (!selectedMatkul) return;
-    setSaving(true);
-
-    const nilaiList = nilaiData
-      .filter((row) => row.nilaiAngka !== "")
-      .map((row) => ({
-        npm: row.npm,
-        nilaiAngka: row.nilaiAngka as number,
-      }));
-
-    try {
-      const res = await fetch("/api/nilai/batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          courseId: selectedMatkul,
-          semester: matkulList.find((m) => m.code === selectedMatkul)?.semester || 1,
-          nilaiList,
-        }),
+        return {
+          code: m.code,
+          name: m.name,
+          sks: m.sks,
+          semester: m.semester,
+          lecturer: m.lecturer || "-",
+          totalMahasiswa: total,
+          avgNilai: parseFloat(avg.toFixed(1)),
+          avgHuruf: total > 0 ? angkaToHuruf(avg) : "-",
+          lulusCount: lulus,
+          tidakLulusCount: tidakLulus,
+          belumDinilai: belum,
+        };
+      })
+      .filter((m) => {
+        if (filterSemester !== "all" && m.semester !== parseInt(filterSemester)) return false;
+        if (searchMatkul) {
+          const q = searchMatkul.toLowerCase();
+          return m.code.toLowerCase().includes(q) || m.name.toLowerCase().includes(q);
+        }
+        return true;
       });
-
-      if (res.ok) {
-        toast.success(`${nilaiList.length} nilai berhasil disimpan`);
-      } else {
-        throw new Error("Gagal");
-      }
-    } catch {
-      toast.error("Gagal menyimpan nilai");
-    } finally {
-      setSaving(false);
-    }
-  };
+  }, [matkulList, nilaiData, filterSemester, searchMatkul]);
 
   const handleSearchTranskrip = async () => {
     if (!transkripNpm) return;
@@ -167,32 +148,6 @@ export default function NilaiPage() {
     }
   };
 
-  const exportNilai = () => {
-    const headers = ["NPM", "Nama", "Nilai Angka", "Nilai Huruf", "Mutu", "Status"];
-    const rows = nilaiData.map((n) => [
-      n.npm,
-      n.name,
-      n.nilaiAngka.toString(),
-      n.nilaiHuruf,
-      n.mutu.toString(),
-      n.status,
-    ]);
-    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `nilai-${selectedMatkul}.csv`;
-    a.click();
-  };
-
-  const filteredNilai = nilaiData.filter(
-    (n) =>
-      n.npm.includes(searchNpm) ||
-      n.name.toLowerCase().includes(searchNpm.toLowerCase())
-  );
-
-  // Group transkrip by semester
   const transkripBySemester: Record<number, typeof transkripNilai> = {};
   transkripNilai.forEach((n) => {
     const sem = (n.semester as number) || 0;
@@ -205,27 +160,36 @@ export default function NilaiPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-[#1B2E4B]">Manajemen Nilai</h2>
-          <p className="text-sm text-slate-500 mt-1">Input dan kelola nilai mahasiswa</p>
+          <p className="text-sm text-slate-500 mt-1">
+            Lihat rekap nilai dan transkrip mahasiswa
+          </p>
         </div>
       </div>
 
-      <Tabs defaultValue="input" className="w-full">
+      <Tabs defaultValue="rekap" className="w-full">
         <TabsList className="grid w-full grid-cols-2 max-w-md">
-          <TabsTrigger value="input">Input Nilai per Matkul</TabsTrigger>
-          <TabsTrigger value="transkrip">Transkrip Mahasiswa</TabsTrigger>
+          <TabsTrigger value="rekap">
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Rekap Nilai
+          </TabsTrigger>
+          <TabsTrigger value="transkrip">
+            <GraduationCap className="w-4 h-4 mr-2" />
+            Transkrip Mahasiswa
+          </TabsTrigger>
         </TabsList>
 
-        {/* Tab 1: Input Nilai */}
-        <TabsContent value="input" className="mt-4 space-y-4">
+        {/* Tab 1: Rekap Nilai (Read-Only) */}
+        <TabsContent value="rekap" className="mt-4 space-y-4">
           <div className="flex flex-col lg:flex-row gap-3">
-            <Select value={selectedMatkul} onValueChange={setSelectedMatkul}>
-              <SelectTrigger className="w-[320px]">
-                <SelectValue placeholder="Pilih Mata Kuliah" />
+            <Select value={filterSemester} onValueChange={setFilterSemester}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter Semester" />
               </SelectTrigger>
               <SelectContent>
-                {matkulList.map((m) => (
-                  <SelectItem key={m.code} value={m.code}>
-                    {m.code} - {m.name} (Semester {m.semester})
+                <SelectItem value="all">Semua Semester</SelectItem>
+                {Array.from({ length: 8 }, (_, i) => (
+                  <SelectItem key={i + 1} value={(i + 1).toString()}>
+                    Semester {i + 1}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -233,110 +197,92 @@ export default function NilaiPage() {
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
-                placeholder="Cari NPM atau nama..."
-                value={searchNpm}
-                onChange={(e) => setSearchNpm(e.target.value)}
+                placeholder="Cari kode atau nama matkul..."
+                value={searchMatkul}
+                onChange={(e) => setSearchMatkul(e.target.value)}
                 className="pl-9"
               />
             </div>
-            {selectedMatkul && (
-              <>
-                <Button variant="outline" onClick={exportNilai}>
-                  <FileSpreadsheet className="w-4 h-4 mr-2" />
-                  Export
-                </Button>
-                <Button
-                  onClick={handleSaveAll}
-                  disabled={saving}
-                  className="bg-[#2563EB] hover:bg-[#1d4ed8]"
-                >
-                  {saving ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Save className="w-4 h-4 mr-2" />
-                  )}
-                  Simpan Semua
-                </Button>
-              </>
-            )}
           </div>
 
-          {selectedMatkul && (
-            <div className="rounded-lg border bg-white">
-              {loading ? (
-                <div className="flex items-center justify-center h-32">
-                  <Loader2 className="w-6 h-6 animate-spin text-[#2563EB]" />
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 border-b">
+          <div className="rounded-lg border bg-white">
+            {loading ? (
+              <div className="flex items-center justify-center h-32">
+                <Loader2 className="w-6 h-6 animate-spin text-[#2563EB]" />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium">Kode</th>
+                      <th className="px-4 py-3 text-left font-medium">Nama</th>
+                      <th className="px-4 py-3 text-left font-medium">Semester</th>
+                      <th className="px-4 py-3 text-left font-medium">Dosen</th>
+                      <th className="px-4 py-3 text-left font-medium">Peserta</th>
+                      <th className="px-4 py-3 text-left font-medium">Rata-rata</th>
+                      <th className="px-4 py-3 text-left font-medium">Lulus</th>
+                      <th className="px-4 py-3 text-left font-medium">Tidak Lulus</th>
+                      <th className="px-4 py-3 text-left font-medium">Belum</th>
+                      <th className="px-4 py-3 text-left font-medium"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {rekapData.length === 0 ? (
                       <tr>
-                        <th className="px-4 py-3 text-left font-medium">NPM</th>
-                        <th className="px-4 py-3 text-left font-medium">Nama</th>
-                        <th className="px-4 py-3 text-left font-medium w-32">Nilai Angka</th>
-                        <th className="px-4 py-3 text-left font-medium">Huruf</th>
-                        <th className="px-4 py-3 text-left font-medium">Mutu</th>
-                        <th className="px-4 py-3 text-left font-medium">Status</th>
+                        <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                          Tidak ada data
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {filteredNilai.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                            Tidak ada data mahasiswa
+                    ) : (
+                      rekapData.map((row) => (
+                        <tr key={row.code} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-mono font-medium">{row.code}</td>
+                          <td className="px-4 py-3">{row.name}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant="outline">Semester {row.semester}</Badge>
+                          </td>
+                          <td className="px-4 py-3">{row.lecturer}</td>
+                          <td className="px-4 py-3">{row.totalMahasiswa}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold">{row.avgNilai || "-"}</span>
+                              {row.avgHuruf !== "-" && (
+                                <Badge
+                                  className={
+                                    row.avgHuruf === "A"
+                                      ? "bg-green-100 text-green-700"
+                                      : row.avgHuruf === "E"
+                                      ? "bg-red-100 text-red-700"
+                                      : "bg-blue-100 text-blue-700"
+                                  }
+                                >
+                                  {row.avgHuruf}
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-green-600 font-medium">{row.lulusCount}</td>
+                          <td className="px-4 py-3 text-red-600 font-medium">{row.tidakLulusCount}</td>
+                          <td className="px-4 py-3 text-amber-600 font-medium">{row.belumDinilai}</td>
+                          <td className="px-4 py-3">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedDetailMatkul(row.code)}
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              Detail
+                            </Button>
                           </td>
                         </tr>
-                      ) : (
-                        filteredNilai.map((row) => (
-                          <tr key={row.npm} className="hover:bg-slate-50">
-                            <td className="px-4 py-2 font-mono">{row.npm}</td>
-                            <td className="px-4 py-2">{row.name}</td>
-                            <td className="px-4 py-2">
-                              <Input
-                                type="number"
-                                min={0}
-                                max={100}
-                                value={row.nilaiAngka}
-                                onChange={(e) => handleNilaiChange(row.npm, e.target.value)}
-                                className="w-24 h-8"
-                              />
-                            </td>
-                            <td className="px-4 py-2">
-                              <Badge
-                                className={
-                                  row.nilaiHuruf === "A"
-                                    ? "bg-green-100 text-green-700"
-                                    : row.nilaiHuruf === "E"
-                                    ? "bg-red-100 text-red-700"
-                                    : "bg-blue-100 text-blue-700"
-                                }
-                              >
-                                {row.nilaiHuruf || "-"}
-                              </Badge>
-                            </td>
-                            <td className="px-4 py-2">{row.mutu || "-"}</td>
-                            <td className="px-4 py-2">
-                              <Badge
-                                variant="outline"
-                                className={
-                                  row.status === "LULUS"
-                                    ? "text-green-600 border-green-300"
-                                    : "text-red-600 border-red-300"
-                                }
-                              >
-                                {row.status}
-                              </Badge>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </TabsContent>
 
         {/* Tab 2: Transkrip */}
@@ -367,7 +313,9 @@ export default function NilaiPage() {
                       <GraduationCap className="w-8 h-8 text-[#2563EB]" />
                       <div>
                         <p className="text-sm text-slate-500">IPK Kumulatif</p>
-                        <p className="text-2xl font-bold">{(transkripData.ipkKumulatif as number)?.toFixed(2) || "0.00"}</p>
+                        <p className="text-2xl font-bold">
+                          {(transkripData.ipkKumulatif as number)?.toFixed(2) || "0.00"}
+                        </p>
                       </div>
                     </div>
                   </CardContent>
@@ -378,7 +326,9 @@ export default function NilaiPage() {
                       <BookOpen className="w-8 h-8 text-green-500" />
                       <div>
                         <p className="text-sm text-slate-500">Total SKS Lulus</p>
-                        <p className="text-2xl font-bold">{(transkripData.totalSksLulus as number) || 0}</p>
+                        <p className="text-2xl font-bold">
+                          {(transkripData.totalSksLulus as number) || 0}
+                        </p>
                       </div>
                     </div>
                   </CardContent>
@@ -389,7 +339,9 @@ export default function NilaiPage() {
                       <BookOpen className="w-8 h-8 text-amber-500" />
                       <div>
                         <p className="text-sm text-slate-500">SKS Tempuh</p>
-                        <p className="text-2xl font-bold">{(transkripData.totalSksTarget as number) || 144}</p>
+                        <p className="text-2xl font-bold">
+                          {(transkripData.totalSksTarget as number) || 144}
+                        </p>
                       </div>
                     </div>
                   </CardContent>
@@ -450,6 +402,100 @@ export default function NilaiPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Detail Modal */}
+      {selectedDetailMatkul && (
+        <DialogDetailNilai
+          courseId={selectedDetailMatkul}
+          courseName={matkulList.find((m) => m.code === selectedDetailMatkul)?.name || ""}
+          nilaiList={nilaiData[selectedDetailMatkul] || []}
+          onClose={() => setSelectedDetailMatkul(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function DialogDetailNilai({
+  courseId,
+  courseName,
+  nilaiList,
+  onClose,
+}: {
+  courseId: string;
+  courseName: string;
+  nilaiList: any[];
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-auto shadow-xl">
+        <div className="p-6 border-b flex items-center justify-between">
+          <h3 className="text-lg font-bold">
+            Detail Nilai — {courseName} ({courseId})
+          </h3>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            ✕
+          </Button>
+        </div>
+        <div className="p-6">
+          {nilaiList.length === 0 ? (
+            <p className="text-slate-400 text-center py-8">Belum ada nilai yang diinput</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">NPM</th>
+                    <th className="px-3 py-2 text-left font-medium">Nama</th>
+                    <th className="px-3 py-2 text-left font-medium">Nilai</th>
+                    <th className="px-3 py-2 text-left font-medium">Huruf</th>
+                    <th className="px-3 py-2 text-left font-medium">Mutu</th>
+                    <th className="px-3 py-2 text-left font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {nilaiList
+                    .sort((a, b) => (a.npm || "").localeCompare(b.npm || ""))
+                    .map((n, i) => (
+                      <tr key={i}>
+                        <td className="px-3 py-2 font-mono">{n.npm || "-"}</td>
+                        <td className="px-3 py-2">{n.mahasiswaName || "-"}</td>
+                        <td className="px-3 py-2 font-bold">{n.nilaiAngka}</td>
+                        <td className="px-3 py-2">
+                          <Badge
+                            className={
+                              n.nilaiHuruf === "A"
+                                ? "bg-green-100 text-green-700"
+                                : n.nilaiHuruf === "E"
+                                ? "bg-red-100 text-red-700"
+                                : "bg-blue-100 text-blue-700"
+                            }
+                          >
+                            {n.nilaiHuruf}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2">{n.mutu}</td>
+                        <td className="px-3 py-2">
+                          <Badge
+                            variant="outline"
+                            className={
+                              n.status === "LULUS"
+                                ? "text-green-600 border-green-300"
+                                : "text-red-600 border-red-300"
+                            }
+                          >
+                            {n.status}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -68,7 +68,7 @@ export async function POST(request: Request) {
 
       const nilaiHuruf = nilaiAngkaToHuruf(parseFloat(nilaiAngka));
       const mutu = nilaiHurufToMutu(nilaiHuruf);
-      const status = nilaiHuruf !== "E" ? "LULUS" : "MENGULANG";
+      const status = nilaiHuruf !== "E" ? "LULUS" : "TIDAK_LULUS";
 
       const docRef = adminDb
         .collection("mahasiswa")

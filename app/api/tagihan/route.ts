@@ -62,19 +62,36 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { npm, semester, items, jatuhTempo, total } = body;
+    const {
+      npm,
+      judul,
+      tipe,
+      total,
+      jatuhTempo,
+      semester,
+      tahunAjaran,
+      diskon = 0,
+      items,
+    } = body;
 
-    if (!npm || !semester || !items || !Array.isArray(items)) {
-      return NextResponse.json({ error: "Field wajib tidak lengkap" }, { status: 400 });
+    if (!npm || !judul || !tipe || !total || !semester) {
+      return NextResponse.json({ error: "Field wajib tidak lengkap (npm, judul, tipe, total, semester)" }, { status: 400 });
     }
 
     const tagihanData = {
-      semester: parseInt(semester),
-      tanggal: new Date(),
-      jatuhTempo: jatuhTempo ? new Date(jatuhTempo) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      total: total || items.reduce((sum: number, item: { jumlah: number }) => sum + (item.jumlah || 0), 0),
-      items,
+      npm,
+      judul,
+      tipe,
+      total: parseInt(total),
       status: "BELUM_LUNAS",
+      isLunas: false,
+      jatuhTempo: jatuhTempo ? new Date(jatuhTempo) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      tanggalBayar: null,
+      paymentMethod: null,
+      tahunAjaran: tahunAjaran || `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`,
+      semester: parseInt(semester),
+      diskon: parseInt(diskon) || 0,
+      items: items || [], // optional array for web detail breakdown
       createdAt: new Date(),
     };
 

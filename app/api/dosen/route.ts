@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/src/lib/firebase-admin";
+import { hashPassword } from "@/src/lib/password-utils";
 
 // GET: List semua dosen
 export async function GET() {
@@ -57,12 +58,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const defaultPassword = `${nidn}@widyatama`;
+    const passwordHash = await hashPassword(defaultPassword);
+
     const data = {
       nidn,
       name,
       title: title || "",
       email,
       department: department || "",
+      passwordHash,
+      isActive: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

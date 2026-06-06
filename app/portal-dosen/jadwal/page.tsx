@@ -1,16 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { useDosenAuth } from "@/hooks/useDosenAuth";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  collection,
+  onSnapshot,
+  query,
+  where,
+} from "firebase/firestore";
+import { db } from "@/src/lib/firebase";
+import type { MataKuliah } from "@/src/types";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -19,10 +19,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, LayoutGrid, List, Clock } from "lucide-react";
-import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "@/src/lib/firebase";
-import type { MataKuliah } from "@/src/types";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2, LayoutGrid, List, Clock, CalendarDays } from "lucide-react";
 
 const HARI_ORDER = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 const JAM_SLOTS = [
@@ -41,37 +40,50 @@ const SEMESTER_COLORS: Record<number, string> = {
   8: "bg-orange-100 border-orange-300 text-orange-800",
 };
 
-export default function JadwalPage() {
+export default function DosenJadwalPage() {
+  const { user } = useDosenAuth();
   const [matkul, setMatkul] = useState<(MataKuliah & { code: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [filterSemester, setFilterSemester] = useState("");
+
+  const hariIni = new Date().getDay();
+  const hariIniNama = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"][hariIni];
 
   useEffect(() => {
-    setLoading(true);
-    const unsub = onSnapshot(collection(db, "courses"), (snapshot) => {
-      const data = snapshot.docs
-        .map((doc) => ({ code: doc.id, ...doc.data() } as MataKuliah & { code: string }))
-        .filter((m) => m.isActive !== false);
-      setMatkul(data);
-      setLoading(false);
-    });
-    return () => unsub();
-  }, []);
+    if (!user?.nidn) return;
 
-  const filteredMatkul = filterSemester && filterSemester !== "all"
-    ? matkul.filter((m) => m.semester === parseInt(filterSemester))
-    : matkul;
+    setLoading(true);
+    const q = query(
+      collection(db, "courses"),
+      where("lecturerId", "==", user.nidn)
+    );
+
+    const unsub = onSnapshot(
+      q,
+      (snapshot) => {
+        const data = snapshot.docs
+          .map((doc) => ({ code: doc.id, ...doc.data() } as MataKuliah & { code: string }))
+          .filter((m) => m.isActive !== false);
+        setMatkul(data);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Error fetching courses:", err);
+        setLoading(false);
+      }
+    );
+
+    return () => unsub();
+  }, [user?.nidn]);
 
   // Group by day for grid view
   const jadwalByDay: Record<string, (MataKuliah & { code: string })[]> = {};
   HARI_ORDER.forEach((hari) => {
-    jadwalByDay[hari] = filteredMatkul
+    jadwalByDay[hari] = matkul
       .filter((m) => m.hari === hari)
       .sort((a, b) => a.jamMulai.localeCompare(b.jamMulai));
   });
 
-  // Parse time string to minutes
   const timeToMinutes = (time: string): number => {
     const [h, m] = time.split(":").map(Number);
     return h * 60 + m;
@@ -88,47 +100,70 @@ export default function JadwalPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-[#1B2E4B]">Jadwal Perkuliahan</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Tampilan jadwal mingguan
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Select value={filterSemester} onValueChange={setFilterSemester}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="Filter Semester" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua Semester</SelectItem>
-              {Array.from({ length: 8 }, (_, i) => (
-                <SelectItem key={i + 1} value={(i + 1).toString()}>
-                  Semester {i + 1}
-                </SelectItem>
+      <div>
+        <h2 className="text-2xl font-bold text-[#1B2E4B]">Jadwal Mengajar</h2>
+        <p className="text-sm text-slate-500 mt-1">
+          Jadwal perkuliahan Anda hari ini: <strong>{hariIniNama}</strong>
+        </p>
+      </div>
+
+      {/* Today's Classes Card */}
+      {jadwalByDay[hariIniNama]?.length > 0 && (
+        <Card className="bg-[#2563EB]/5 border-[#2563EB]/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 text-[#2563EB]">
+              <CalendarDays className="w-5 h-5" />
+              Jadwal Hari Ini — {hariIniNama}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {jadwalByDay[hariIniNama].map((course) => (
+                <div
+                  key={course.code}
+                  className={`p-3 rounded-lg border ${SEMESTER_COLORS[course.semester] || "bg-slate-100"}`}
+                >
+                  <p className="font-semibold text-sm">{course.name}</p>
+                  <p className="text-xs opacity-70">{course.code}</p>
+                  <div className="flex items-center gap-1 mt-2 text-xs opacity-80">
+                    <Clock className="w-3 h-3" />
+                    {course.jamMulai} - {course.jamSelesai}
+                  </div>
+                  <p className="text-xs opacity-70 mt-1">Ruang {course.room}</p>
+                  <Badge variant="outline" className="text-[10px] mt-2">
+                    {course.sks} SKS
+                  </Badge>
+                </div>
               ))}
-            </SelectContent>
-          </Select>
-          <div className="flex border rounded-lg overflow-hidden">
-            <Button
-              variant={viewMode === "grid" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("grid")}
-              className={viewMode === "grid" ? "bg-[#2563EB]" : ""}
-            >
-              <LayoutGrid className="w-4 h-4 mr-1" />
-              Grid
-            </Button>
-            <Button
-              variant={viewMode === "list" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("list")}
-              className={viewMode === "list" ? "bg-[#2563EB]" : ""}
-            >
-              <List className="w-4 h-4 mr-1" />
-              List
-            </Button>
-          </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* View Toggle */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-slate-500">
+          Total {matkul.length} mata kuliah diampu
+        </p>
+        <div className="flex border rounded-lg overflow-hidden">
+          <Button
+            variant={viewMode === "grid" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("grid")}
+            className={viewMode === "grid" ? "bg-[#2563EB]" : ""}
+          >
+            <LayoutGrid className="w-4 h-4 mr-1" />
+            Grid
+          </Button>
+          <Button
+            variant={viewMode === "list" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("list")}
+            className={viewMode === "list" ? "bg-[#2563EB]" : ""}
+          >
+            <List className="w-4 h-4 mr-1" />
+            List
+          </Button>
         </div>
       </div>
 
@@ -140,7 +175,12 @@ export default function JadwalPage() {
             <div className="grid grid-cols-7 gap-2 mb-2">
               <div className="p-2 font-semibold text-sm text-slate-500">Jam</div>
               {HARI_ORDER.map((hari) => (
-                <div key={hari} className="p-2 font-semibold text-sm text-center text-[#1B2E4B]">
+                <div
+                  key={hari}
+                  className={`p-2 font-semibold text-sm text-center rounded ${
+                    hari === hariIniNama ? "bg-[#2563EB] text-white" : "text-[#1B2E4B]"
+                  }`}
+                >
                   {hari}
                 </div>
               ))}
@@ -168,11 +208,11 @@ export default function JadwalPage() {
                       return (
                         <div key={hari} className="min-h-[80px] p-1">
                           {coursesInSlot?.map((course) => {
-                            const colorClass = SEMESTER_COLORS[course.semester] || "bg-slate-100 border-slate-300";
+                            const colorClass =
+                              SEMESTER_COLORS[course.semester] || "bg-slate-100 border-slate-300";
                             return (
-                              <Link
+                              <div
                                 key={course.code}
-                                href={`/mata-kuliah/${course.code}`}
                                 className={`block p-2 rounded-lg border text-xs mb-1 hover:shadow-md transition-shadow cursor-pointer ${colorClass}`}
                               >
                                 <p className="font-semibold truncate">{course.code}</p>
@@ -184,7 +224,7 @@ export default function JadwalPage() {
                                 <Badge variant="outline" className="text-[10px] mt-1 px-1 py-0">
                                   {course.sks} SKS
                                 </Badge>
-                              </Link>
+                              </div>
                             );
                           })}
                         </div>
@@ -211,32 +251,32 @@ export default function JadwalPage() {
                 <TableHead>Hari</TableHead>
                 <TableHead>Jam</TableHead>
                 <TableHead>Ruangan</TableHead>
-                <TableHead>Dosen</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredMatkul.length === 0 ? (
+              {matkul.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center text-slate-400">
-                    Tidak ada jadwal
+                  <TableCell colSpan={7} className="h-32 text-center text-slate-400">
+                    Tidak ada jadwal mengajar
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredMatkul
+                matkul
                   .sort((a, b) => {
                     const hariDiff = HARI_ORDER.indexOf(a.hari) - HARI_ORDER.indexOf(b.hari);
                     if (hariDiff !== 0) return hariDiff;
                     return a.jamMulai.localeCompare(b.jamMulai);
                   })
                   .map((course) => (
-                    <TableRow key={course.code}>
+                    <TableRow
+                      key={course.code}
+                      className={course.hari === hariIniNama ? "bg-[#2563EB]/5" : ""}
+                    >
                       <TableCell className="font-mono font-medium">{course.code}</TableCell>
                       <TableCell>{course.name}</TableCell>
                       <TableCell>{course.sks} SKS</TableCell>
                       <TableCell>
-                        <Badge
-                          className={SEMESTER_COLORS[course.semester] || ""}
-                        >
+                        <Badge className={SEMESTER_COLORS[course.semester] || ""}>
                           Semester {course.semester}
                         </Badge>
                       </TableCell>
@@ -245,7 +285,6 @@ export default function JadwalPage() {
                         {course.jamMulai} - {course.jamSelesai}
                       </TableCell>
                       <TableCell>{course.room}</TableCell>
-                      <TableCell>{course.lecturer || "-"}</TableCell>
                     </TableRow>
                   ))
               )}
@@ -259,7 +298,9 @@ export default function JadwalPage() {
         <span className="text-slate-500 font-medium">Semester:</span>
         {Array.from({ length: 8 }, (_, i) => (
           <div key={i + 1} className="flex items-center gap-1">
-            <div className={`w-3 h-3 rounded ${SEMESTER_COLORS[i + 1]?.split(" ")[0] || "bg-slate-200"}`} />
+            <div
+              className={`w-3 h-3 rounded ${SEMESTER_COLORS[i + 1]?.split(" ")[0] || "bg-slate-200"}`}
+            />
             <span>{i + 1}</span>
           </div>
         ))}

@@ -29,6 +29,16 @@ export async function GET(request: Request) {
 
     const adminData = adminDoc.data();
 
+    // Generate Firebase Custom Token
+    let firebaseToken = "";
+    if (adminAuth) {
+      try {
+        firebaseToken = await adminAuth.createCustomToken(uid);
+      } catch (tokenErr) {
+        console.error("[ADMIN ME] Failed to create custom token:", tokenErr);
+      }
+    }
+
     return NextResponse.json({
       user: {
         uid,
@@ -36,6 +46,7 @@ export async function GET(request: Request) {
         name: adminData?.name || "",
         role: adminData?.role || "akademik",
       },
+      firebaseToken,
     });
   } catch {
     return NextResponse.json({ user: null }, { status: 200 });

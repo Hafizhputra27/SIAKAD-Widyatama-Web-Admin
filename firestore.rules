@@ -1,0 +1,141 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // HELPER FUNCTIONS
+    // ============================================================
+
+    // Ambil NPM dari email Firebase Auth: {npm}@student.widyatama.ac.id
+    function getUserNpm(email) {
+      return email.split("@")[0];
+    }
+
+    // Cek apakah user adalah admin (berdasarkan koleksi admins)
+    function isAdmin() {
+      return exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Cek apakah user adalah dosen (berdasarkan custom claim role)
+    function isDosen() {
+      return request.auth != null && request.auth.token.role == "dosen";
+    }
+
+    // ============================================================
+    // MAHASISWA
+    // ============================================================
+    match /mahasiswa/{npm} {
+      // Mahasiswa hanya bisa baca data sendiri, Dosen/Admin bisa baca data semua mahasiswa
+      allow read: if request.auth != null && (
+        isAdmin() ||
+        isDosen() ||
+        getUserNpm(request.auth.token.email) == npm
+      );
+      // Hanya admin via Admin SDK (atau server) yang bisa write
+      allow write: if false;
+    }
+
+    // ============================================================
+    // PRESENSI
+    // ============================================================
+    match /presensi/{presensiId} {
+      // Mahasiswa bisa baca presensi sendiri, Dosen/Admin bisa baca semua presensi
+      allow read: if request.auth != null && (
+        isAdmin() ||
+        isDosen() ||
+        resource.data.npm == getUserNpm(request.auth.token.email)
+      );
+
+      // Mahasiswa bisa create presensi (untuk scan QR), tapi NPM harus cocok
+      allow create: if request.auth != null
+                      && request.resource.data.npm == getUserNpm(request.auth.token.email)
+                      && request.resource.data.keys().hasAll([
+                          "npm", "courseId", "pertemuanId", "status", "scanMethod"
+                        ]);
+
+      // Tidak boleh update/delete presensi
+      allow update, delete: if false;
+    }
+
+    // ============================================================
+    // PERTEMUAN
+    // ============================================================
+    match /pertemuan/{id} {
+      // Mahasiswa bisa baca pertemuan (untuk validasi QR saat scan)
+      allow read: if request.auth != null;
+
+      // Hanya server / admin yang boleh write
+      allow write: if false;
+    }
+
+    // ============================================================
+    // COURSES
+    // ============================================================
+    match /courses/{code} {
+      // Semua user yang login bisa baca courses
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // ============================================================
+    // TAGIHAN
+    // ============================================================
+    match /tagihan/{tagihanId} {
+      // Mahasiswa bisa baca tagihan sendiri, Admin bisa baca semua
+      allow read: if request.auth != null && (
+        isAdmin() ||
+        resource.data.npm == getUserNpm(request.auth.token.email)
+      );
+      allow write: if false;
+    }
+
+    // ============================================================
+    // PENGUMUMAN
+    // ============================================================
+    match /pengumuman/{id} {
+      // Semua user yang login bisa baca pengumuman yang aktif, Admin bisa baca semua
+      allow read: if request.auth != null && (
+        isAdmin() ||
+        resource.data.isActive == true
+      );
+      allow write: if false;
+    }
+
+    // ============================================================
+    // ROOMS (RUANGAN)
+    // ============================================================
+    match /rooms/{id} {
+      // Semua user yang login bisa baca ruangan
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // ============================================================
+    // ADMINS
+    // ============================================================
+    match /admins/{uid} {
+      // Hanya admin yang bisa baca (server-side / Admin SDK bypass rules)
+      allow read, write: if false;
+    }
+
+    // ============================================================
+    // LECTURERS (DOSEN)
+    // ============================================================
+    match /lecturers/{nidn} {
+      // Hanya server / admin SDK yang boleh akses
+      allow read, write: if false;
+    }
+
+    // ============================================================
+    // REKAP NILAI / ACADEMIC_RESULTS
+    // ============================================================
+    // academic_results disimpan sebagai subcollection: /mahasiswa/{npm}/academic_results
+    match /mahasiswa/{npm}/academic_results/{resultId} {
+      allow read: if request.auth != null && (
+        isAdmin() ||
+        getUserNpm(request.auth.token.email) == npm
+      );
+      allow write: if false;
+    }
+  }
+}

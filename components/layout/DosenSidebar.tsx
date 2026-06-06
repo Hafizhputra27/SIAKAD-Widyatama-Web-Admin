@@ -1,43 +1,44 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAuth } from "@/hooks/useAuth";
+import { useDosenAuth } from "@/hooks/useDosenAuth";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
-  Users,
-  BookOpen,
-  QrCode,
+  Calendar,
   GraduationCap,
-  CreditCard,
-  Megaphone,
+  Users,
+  UserCircle,
   LogOut,
   Menu,
   X,
-  DoorOpen,
 } from "lucide-react";
-import { useState } from "react";
 
-const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/" },
-  { icon: Users, label: "Mahasiswa", href: "/mahasiswa" },
-  { icon: GraduationCap, label: "Dosen", href: "/dosen" },
-  { icon: BookOpen, label: "Mata Kuliah", href: "/mata-kuliah" },
-  { icon: DoorOpen, label: "Ruangan", href: "/ruangan" },
-  { icon: QrCode, label: "Rekap Absensi", href: "/absensi" },
-  { icon: GraduationCap, label: "Nilai", href: "/nilai" },
-  { icon: CreditCard, label: "Tagihan", href: "/tagihan" },
-  { icon: Megaphone, label: "Pengumuman", href: "/pengumuman" },
+interface MenuItem {
+  icon: React.ElementType;
+  label: string;
+  href: string;
+  exact?: boolean;
+}
+
+const menuItems: MenuItem[] = [
+  { icon: LayoutDashboard, label: "Dashboard", href: "/portal-dosen", exact: true },
+  { icon: Calendar, label: "Jadwal", href: "/portal-dosen/jadwal" },
+  { icon: GraduationCap, label: "Pertemuan", href: "/portal-dosen/pertemuan" },
+  { icon: GraduationCap, label: "Nilai", href: "/portal-dosen/nilai" },
+  { icon: Users, label: "Presensi", href: "/portal-dosen/presensi" },
+  { icon: UserCircle, label: "Profil", href: "/portal-dosen/profil", exact: true },
 ];
 
-export default function Sidebar() {
+export default function DosenSidebar() {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, logout } = useDosenAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const isActive = (href: string) => {
-    if (href === "/") return pathname === "/";
+  const isActive = (href: string, exact?: boolean) => {
+    if (exact) return pathname === href;
     return pathname === href || pathname.startsWith(href + "/");
   };
 
@@ -46,14 +47,14 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="h-16 flex items-center px-6 border-b border-white/10">
         <GraduationCap className="w-6 h-6 text-[#2563EB] mr-3" />
-        <span className="text-white font-bold text-lg">SIAKAD</span>
+        <span className="text-white font-bold text-lg">SIAKAD Dosen</span>
       </div>
 
       {/* Nav items */}
       <nav className="flex-1 py-4 px-3 overflow-y-auto">
         <ul className="space-y-1">
           {menuItems.map((item) => {
-            const active = isActive(item.href);
+            const active = isActive(item.href, item.exact);
             return (
               <li key={item.href}>
                 <Link
@@ -79,14 +80,14 @@ export default function Sidebar() {
       <div className="p-4 border-t border-white/10">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-9 h-9 rounded-full bg-[#2563EB] flex items-center justify-center text-white text-sm font-medium">
-            {user?.name?.charAt(0)?.toUpperCase() || "A"}
+            {user?.name?.charAt(0)?.toUpperCase() || "D"}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-white truncate">
-              {user?.name || "Admin"}
+              {user?.name || "Dosen"}
             </p>
             <p className="text-xs text-slate-400 truncate">
-              {user?.role || "Admin"}
+              {user?.nidn || "NIDN"}
             </p>
           </div>
         </div>

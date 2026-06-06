@@ -112,7 +112,7 @@ export async function POST(request: Request) {
     // Hitung nilai huruf, mutu, status
     const nilaiHuruf = nilaiAngkaToHuruf(parseFloat(nilaiAngka));
     const mutu = nilaiHurufToMutu(nilaiHuruf);
-    const status = nilaiHuruf !== "E" ? "LULUS" : "MENGULANG";
+    const status = nilaiHuruf !== "E" ? "LULUS" : "TIDAK_LULUS";
 
     // Ambil info mata kuliah
     const courseDoc = await adminDb.collection("courses").doc(mataKuliahId).get();

@@ -37,7 +37,7 @@ export default function DashboardPage() {
     tagihanBelumLunas: 0,
   });
   const [meetings, setMeetings] = useState<TodayMeeting[]>([]);
-  const [pengumumanList, setPengumumanList] = useState<{ title: string; createdAt: Date }[]>([]);
+  const [pengumumanList, setPengumumanList] = useState<{ title: string; priority: string; createdAt: Date }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -84,14 +84,22 @@ export default function DashboardPage() {
       }
     );
 
-    // Pengumuman aktif
+    // Pengumuman aktif — sort by priority (HIGH → NORMAL → LOW) then by date
     const unsub5 = onSnapshot(
       query(collection(db, "pengumuman"), where("isActive", "==", true)),
       (snap) => {
-        const data = snap.docs.map((d) => ({
-          title: d.data().title || "",
-          createdAt: d.data().createdAt?.toDate?.() ? d.data().createdAt.toDate() : new Date(),
-        }));
+        const priorityOrder: Record<string, number> = { HIGH: 0, NORMAL: 1, LOW: 2 };
+        const data = snap.docs
+          .map((d) => ({
+            title: d.data().title || "",
+            priority: (d.data().priority as string) || "NORMAL",
+            createdAt: d.data().createdAt?.toDate?.() ? d.data().createdAt.toDate() : new Date(),
+          }))
+          .sort((a, b) => {
+            const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+            if (priorityDiff !== 0) return priorityDiff;
+            return b.createdAt.getTime() - a.createdAt.getTime();
+          });
         setPengumumanList(data.slice(0, 3));
       }
     );
@@ -263,7 +271,20 @@ export default function DashboardPage() {
               <div className="space-y-3">
                 {pengumumanList.map((p, i) => (
                   <div key={i} className="p-3 bg-slate-50 rounded-lg">
-                    <p className="font-medium text-sm">{p.title}</p>
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-sm">{p.title}</p>
+                      <Badge
+                        className={
+                          p.priority === "HIGH"
+                            ? "bg-red-100 text-red-700 text-[10px]"
+                            : p.priority === "NORMAL"
+                            ? "bg-blue-100 text-blue-700 text-[10px]"
+                            : "bg-gray-100 text-gray-600 text-[10px]"
+                        }
+                      >
+                        {p.priority}
+                      </Badge>
+                    </div>
                     <p className="text-xs text-slate-400">
                       {p.createdAt.toLocaleDateString("id-ID")}
                     </p>

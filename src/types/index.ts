@@ -72,6 +72,8 @@ export interface Dosen {
   title: string;
   email: string;
   department: string;
+  passwordHash: string;
+  isActive: boolean;
 }
 
 export interface Admin {
@@ -90,7 +92,7 @@ export interface AcademicResult {
   nilaiHuruf: "A" | "B" | "C" | "D" | "E";
   mutu: number;
   semester: number;
-  status: "LULUS" | "MENGULANG";
+  status: "LULUS" | "TIDAK_LULUS";
 }
 
 export interface Tagihan {
@@ -109,6 +111,7 @@ export interface Pengumuman {
   title: string;
   content: string;
   isActive: boolean;
+  priority: "HIGH" | "NORMAL" | "LOW";
   createdAt: Date;
 }
 
