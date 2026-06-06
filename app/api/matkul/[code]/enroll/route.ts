@@ -65,7 +65,7 @@ export async function POST(
           nilaiHuruf: "E",
           mutu: 0,
           semester: courseDoc.data()?.semester || 0,
-          status: "MENGULANG",
+          status: "TIDAK_LULUS",
           createdAt: new Date(),
         },
         { merge: true }

@@ -14,7 +14,6 @@ const pageTitleMap: Record<string, string> = {
   "/": "Dashboard",
   "/mahasiswa": "Data Mahasiswa",
   "/mata-kuliah": "Mata Kuliah",
-  "/jadwal": "Jadwal Perkuliahan",
   "/absensi": "Rekap Absensi",
   "/absensi/qr": "Generate QR Absensi",
   "/nilai": "Nilai Mahasiswa",
@@ -45,7 +44,6 @@ function getBreadcrumb(pathname: string): BreadcrumbItem[] {
   const sectionLabels: Record<string, string> = {
     mahasiswa: "Mahasiswa",
     "mata-kuliah": "Mata Kuliah",
-    jadwal: "Jadwal",
     absensi: "Absensi",
     nilai: "Nilai",
     tagihan: "Tagihan",

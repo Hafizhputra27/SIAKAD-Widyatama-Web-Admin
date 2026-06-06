@@ -210,6 +210,243 @@ async function seedLecturers() {
   }
 }
 
+async function seedMahasiswa() {
+  console.log("🌱 Seeding mahasiswa...");
+  const mahasiswaRef = adminDb.collection("mahasiswa");
+  const existing = await mahasiswaRef.limit(1).get();
+
+  if (!existing.empty) {
+    console.log("   ⚠️  Mahasiswa sudah ada, skip.");
+    return;
+  }
+
+  const mahasiswaData = [
+    {
+      npm: "241111011",
+      name: "Budi Santoso",
+      major: "Teknik Informatika",
+      campusEmail: "241111011@student.widyatama.ac.id",
+      passwordHash: "",
+      status: "AKTIF",
+      kelas: "REGULER",
+      angkatan: 2024,
+      ipkKumulatif: 3.75,
+      totalSksLulus: 36,
+      totalSksTarget: 144,
+      semesterBerjalan: 2,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      npm: "241111012",
+      name: "Ani Wulandari",
+      major: "Sistem Informasi",
+      campusEmail: "241111012@student.widyatama.ac.id",
+      passwordHash: "",
+      status: "AKTIF",
+      kelas: "REGULER",
+      angkatan: 2024,
+      ipkKumulatif: 3.45,
+      totalSksLulus: 36,
+      totalSksTarget: 144,
+      semesterBerjalan: 2,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      npm: "241111013",
+      name: "Cahyo Nugroho",
+      major: "Teknik Informatika",
+      campusEmail: "241111013@student.widyatama.ac.id",
+      passwordHash: "",
+      status: "AKTIF",
+      kelas: "KARYAWAN",
+      angkatan: 2023,
+      ipkKumulatif: 3.2,
+      totalSksLulus: 72,
+      totalSksTarget: 144,
+      semesterBerjalan: 4,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      npm: "231111021",
+      name: "Dewi Kusuma",
+      major: "Manajemen Informatika",
+      campusEmail: "231111021@student.widyatama.ac.id",
+      passwordHash: "",
+      status: "AKTIF",
+      kelas: "REGULER",
+      angkatan: 2023,
+      ipkKumulatif: 2.85,
+      totalSksLulus: 72,
+      totalSksTarget: 144,
+      semesterBerjalan: 4,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      npm: "221111031",
+      name: "Eko Prasetyo",
+      major: "Komputerisasi Akuntansi",
+      campusEmail: "221111031@student.widyatama.ac.id",
+      passwordHash: "",
+      status: "LULUS",
+      kelas: "REGULER",
+      angkatan: 2022,
+      ipkKumulatif: 3.65,
+      totalSksLulus: 144,
+      totalSksTarget: 144,
+      semesterBerjalan: 8,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ];
+
+  for (const data of mahasiswaData) {
+    await mahasiswaRef.doc(data.npm).set(data);
+    console.log(`   ✅ Mahasiswa ${data.npm} - ${data.name} berhasil ditambahkan.`);
+  }
+}
+
+async function seedPengumuman() {
+  console.log("🌱 Seeding pengumuman...");
+  const pengumumanRef = adminDb.collection("pengumuman");
+  const existing = await pengumumanRef.limit(1).get();
+
+  if (!existing.empty) {
+    console.log("   ⚠️  Pengumuman sudah ada, skip.");
+    return;
+  }
+
+  const pengumumanData = [
+    {
+      title: "Jadwal UTS Semester Genap 2025/2026",
+      content: "UTS akan dilaksanakan tanggal 15-20 Juni 2026. Mohon persiapkan diri dengan baik.",
+      isActive: true,
+      priority: "HIGH",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      title: "Pembayaran Uang Khusus Praktikum",
+      content: "Pembayaran praktikum semester genap dapat dilakukan hingga 30 Juni 2026.",
+      isActive: true,
+      priority: "NORMAL",
+      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    },
+    {
+      title: "Libur Nasional Hari Raya",
+      content: "Kampus libur pada tanggal 17-18 Juni 2026 dalam rangka Hari Raya.",
+      isActive: true,
+      priority: "LOW",
+      createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+      updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+    },
+  ];
+
+  for (const data of pengumumanData) {
+    const docRef = pengumumanRef.doc();
+    await docRef.set({ ...data, id: docRef.id });
+    console.log(`   ✅ Pengumuman "${data.title}" berhasil ditambahkan.`);
+  }
+}
+
+async function seedTagihan() {
+  console.log("🌱 Seeding tagihan...");
+  const mahasiswaSnap = await adminDb.collection("mahasiswa").get();
+
+  if (mahasiswaSnap.empty) {
+    console.log("   ⚠️  Tidak ada mahasiswa, skip tagihan.");
+    return;
+  }
+
+  for (const mDoc of mahasiswaSnap.docs) {
+    const npm = mDoc.id;
+    const semester = mDoc.data().semesterBerjalan || 1;
+
+    const tagihanData = [
+      {
+        npm,
+        judul: `SPP Semester ${semester}`,
+        tipe: "SPP",
+        total: 3500000,
+        status: "BELUM_LUNAS",
+        isLunas: false,
+        jatuhTempo: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        tanggalBayar: null,
+        paymentMethod: null,
+        tahunAjaran: "2025/2026",
+        semester,
+        diskon: 0,
+        items: [
+          { nama: "SPP", jumlah: 3500000 },
+        ],
+        createdAt: new Date(),
+      },
+      {
+        npm,
+        judul: `UKT Semester ${semester}`,
+        tipe: "UKT",
+        total: 1500000,
+        status: "BELUM_LUNAS",
+        isLunas: false,
+        jatuhTempo: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        tanggalBayar: null,
+        paymentMethod: null,
+        tahunAjaran: "2025/2026",
+        semester,
+        diskon: 0,
+        items: [
+          { nama: "UKT", jumlah: 1500000 },
+        ],
+        createdAt: new Date(),
+      },
+    ];
+
+    for (const data of tagihanData) {
+      const docRef = adminDb.collection("mahasiswa").doc(npm).collection("tagihan").doc();
+      await docRef.set({ ...data, id: docRef.id });
+    }
+    console.log(`   ✅ ${tagihanData.length} tagihan untuk ${npm} berhasil ditambahkan.`);
+  }
+}
+
+async function seedAcademicResults() {
+  console.log("🌱 Seeding academic_results...");
+
+  const results = [
+    { npm: "241111011", code: "IF101", name: "Algoritma & Pemrograman", sks: 3, semester: 1, nilaiAngka: 85, nilaiHuruf: "A", mutu: 4.0, status: "LULUS" },
+    { npm: "241111011", code: "IF102", name: "Struktur Data", sks: 3, semester: 1, nilaiAngka: 78, nilaiHuruf: "B", mutu: 3.0, status: "LULUS" },
+    { npm: "241111011", code: "IF103", name: "Basis Data", sks: 3, semester: 2, nilaiAngka: 92, nilaiHuruf: "A", mutu: 4.0, status: "LULUS" },
+    { npm: "241111011", code: "IF104", name: "Pemrograman Web", sks: 3, semester: 2, nilaiAngka: 88, nilaiHuruf: "A", mutu: 4.0, status: "LULUS" },
+    { npm: "241111012", code: "IF101", name: "Algoritma & Pemrograman", sks: 3, semester: 1, nilaiAngka: 72, nilaiHuruf: "B", mutu: 3.0, status: "LULUS" },
+    { npm: "241111012", code: "IF102", name: "Struktur Data", sks: 3, semester: 1, nilaiAngka: 68, nilaiHuruf: "C", mutu: 2.0, status: "LULUS" },
+    { npm: "241111012", code: "IF103", name: "Basis Data", sks: 3, semester: 2, nilaiAngka: 55, nilaiHuruf: "C", mutu: 2.0, status: "LULUS" },
+    { npm: "241111012", code: "IF105", name: "Jaringan Komputer", sks: 3, semester: 2, nilaiAngka: 35, nilaiHuruf: "E", mutu: 0.0, status: "TIDAK_LULUS" },
+    { npm: "241111013", code: "IF201", name: "Pemrograman Mobile", sks: 3, semester: 3, nilaiAngka: 90, nilaiHuruf: "A", mutu: 4.0, status: "LULUS" },
+    { npm: "241111013", code: "IF202", name: "Kecerdasan Buatan", sks: 3, semester: 3, nilaiAngka: 82, nilaiHuruf: "B", mutu: 3.0, status: "LULUS" },
+  ];
+
+  for (const r of results) {
+    const docRef = adminDb.collection("mahasiswa").doc(r.npm).collection("academic_results").doc(r.code);
+    await docRef.set({
+      mataKuliahId: r.code,
+      mataKuliahName: r.name,
+      sks: r.sks,
+      semester: r.semester,
+      nilaiAngka: r.nilaiAngka,
+      nilaiHuruf: r.nilaiHuruf,
+      mutu: r.mutu,
+      status: r.status,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+  console.log(`   ✅ ${results.length} academic_results berhasil ditambahkan.`);
+}
+
 async function main() {
   console.log("🚀 SIAKAD Seeder Started\n");
 
@@ -222,6 +459,10 @@ async function main() {
 
     await seedAdmins();
     await seedLecturers();
+    await seedMahasiswa();
+    await seedPengumuman();
+    await seedTagihan();
+    await seedAcademicResults();
     await seedPertemuan();
     await migratePresensi();
     await migrateCourses();

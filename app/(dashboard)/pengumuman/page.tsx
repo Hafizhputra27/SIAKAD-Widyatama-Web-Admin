@@ -7,6 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -23,6 +30,7 @@ interface Pengumuman {
   title: string;
   content: string;
   isActive: boolean;
+  priority: "HIGH" | "NORMAL" | "LOW";
   createdAt: Date;
 }
 
@@ -37,6 +45,7 @@ export default function PengumumanPage() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [priority, setPriority] = useState<"HIGH" | "NORMAL" | "LOW">("NORMAL");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -52,6 +61,7 @@ export default function PengumumanPage() {
               title: dt.title || "",
               content: dt.content || "",
               isActive: dt.isActive !== false,
+              priority: (dt.priority as "HIGH" | "NORMAL" | "LOW") || "NORMAL",
               createdAt: dt.createdAt?.toDate?.() ? dt.createdAt.toDate() : new Date(),
             } as Pengumuman;
           })
@@ -67,6 +77,7 @@ export default function PengumumanPage() {
     setTitle("");
     setContent("");
     setIsActive(true);
+    setPriority("NORMAL");
     setEditMode(false);
     setEditId("");
   };
@@ -80,6 +91,7 @@ export default function PengumumanPage() {
     setTitle(p.title);
     setContent(p.content);
     setIsActive(p.isActive);
+    setPriority(p.priority || "NORMAL");
     setEditId(p.id);
     setEditMode(true);
     setDialogOpen(true);
@@ -99,7 +111,7 @@ export default function PengumumanPage() {
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content, isActive }),
+        body: JSON.stringify({ title, content, isActive, priority }),
       });
 
       if (res.ok) {
@@ -188,9 +200,22 @@ export default function PengumumanPage() {
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <Badge className={p.isActive ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}>
-                    {p.isActive ? "Aktif" : "Nonaktif"}
-                  </Badge>
+                  <div className="flex flex-col items-end gap-1">
+                    <Badge className={p.isActive ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}>
+                      {p.isActive ? "Aktif" : "Nonaktif"}
+                    </Badge>
+                    <Badge
+                      className={
+                        p.priority === "HIGH"
+                          ? "bg-red-100 text-red-700"
+                          : p.priority === "NORMAL"
+                          ? "bg-blue-100 text-blue-700"
+                          : "bg-gray-100 text-gray-600"
+                      }
+                    >
+                      {p.priority}
+                    </Badge>
+                  </div>
                   <div className="flex gap-1">
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openEdit(p)}>
                       <Pencil className="w-4 h-4 text-slate-500" />
@@ -242,6 +267,19 @@ export default function PengumumanPage() {
                 rows={5}
                 className="w-full px-3 py-2 border rounded-md text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Priority</Label>
+              <Select value={priority} onValueChange={(v) => setPriority(v as "HIGH" | "NORMAL" | "LOW")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="HIGH">HIGH</SelectItem>
+                  <SelectItem value="NORMAL">NORMAL</SelectItem>
+                  <SelectItem value="LOW">LOW</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center gap-3">
               <Switch checked={isActive} onCheckedChange={setIsActive} />

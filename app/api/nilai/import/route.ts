@@ -80,7 +80,7 @@ export async function POST(request: Request) {
 
       const nilaiHuruf = nilaiAngkaToHuruf(nilaiAngka);
       const mutu = nilaiHurufToMutu(nilaiHuruf);
-      const status = nilaiHuruf !== "E" ? "LULUS" : "MENGULANG";
+      const status = nilaiHuruf !== "E" ? "LULUS" : "TIDAK_LULUS";
 
       const courseDoc = await adminDb.collection("courses").doc(mataKuliahId).get();
       const courseData = courseDoc.exists ? courseDoc.data() : null;

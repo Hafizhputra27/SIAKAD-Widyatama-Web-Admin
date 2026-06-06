@@ -29,9 +29,14 @@ interface TagihanRow {
   id: string;
   npm: string;
   mahasiswaName: string;
-  semester: number;
+  judul: string;
+  tipe: string;
   total: number;
   status: "LUNAS" | "BELUM_LUNAS" | "PROSES";
+  isLunas: boolean;
+  semester: number;
+  tahunAjaran: string;
+  diskon: number;
   jatuhTempo: Date;
   items: TagihanItem[];
 }
@@ -51,6 +56,10 @@ export default function TagihanPage() {
 
   // Form buat tagihan
   const [semester, setSemester] = useState("1");
+  const [judul, setJudul] = useState("");
+  const [tipe, setTipe] = useState("SPP");
+  const [tahunAjaran, setTahunAjaran] = useState(`${new Date().getFullYear()}/${new Date().getFullYear() + 1}`);
+  const [diskon, setDiskon] = useState("0");
   const [items, setItems] = useState<TagihanItem[]>([{ nama: "SPP", jumlah: 3500000 }]);
   const [jatuhTempo, setJatuhTempo] = useState("");
   const [target, setTarget] = useState<"single" | "all">("all");
@@ -95,18 +104,31 @@ export default function TagihanPage() {
   };
 
   const handleCreate = async () => {
-    if (items.some((i) => !i.nama || !i.jumlah)) {
-      toast.error("Semua item harus diisi");
+    if (!judul || !tipe) {
+      toast.error("Judul dan tipe tagihan wajib diisi");
       return;
     }
 
+    const calculatedTotal = Math.max(0, totalItems - parseInt(diskon || "0"));
+
     setCreating(true);
     try {
+      const body = {
+        judul,
+        tipe,
+        total: calculatedTotal,
+        semester: parseInt(semester),
+        jatuhTempo,
+        tahunAjaran,
+        diskon: parseInt(diskon || "0"),
+        items,
+      };
+
       if (target === "all") {
         const res = await fetch("/api/tagihan/bulk", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ semester: parseInt(semester), items, jatuhTempo }),
+          body: JSON.stringify(body),
         });
         if (res.ok) {
           const data = await res.json();
@@ -118,7 +140,7 @@ export default function TagihanPage() {
         const res = await fetch(`/api/tagihan/${targetNpm}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ semester: parseInt(semester), items, jatuhTempo, total: totalItems }),
+          body: JSON.stringify({ ...body, npm: targetNpm }),
         });
         if (res.ok) {
           toast.success("Tagihan berhasil dibuat");
@@ -260,6 +282,8 @@ export default function TagihanPage() {
                     <tr>
                       <th className="px-4 py-3 text-left font-medium">NPM</th>
                       <th className="px-4 py-3 text-left font-medium">Nama</th>
+                      <th className="px-4 py-3 text-left font-medium">Judul</th>
+                      <th className="px-4 py-3 text-left font-medium">Tipe</th>
                       <th className="px-4 py-3 text-left font-medium">Semester</th>
                       <th className="px-4 py-3 text-left font-medium">Total</th>
                       <th className="px-4 py-3 text-left font-medium">Status</th>
@@ -270,7 +294,7 @@ export default function TagihanPage() {
                   <tbody className="divide-y">
                     {filteredTagihan.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                        <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
                           Tidak ada data tagihan
                         </td>
                       </tr>
@@ -279,10 +303,17 @@ export default function TagihanPage() {
                         <tr key={t.id} className="hover:bg-slate-50">
                           <td className="px-4 py-2 font-mono">{t.npm}</td>
                           <td className="px-4 py-2">{t.mahasiswaName}</td>
-                          <td className="px-4 py-2">Semester {t.semester}</td>
-                          <td className="px-4 py-2">Rp {t.total.toLocaleString()}</td>
+                          <td className="px-4 py-2 font-medium">{t.judul || "-"}</td>
                           <td className="px-4 py-2">
-                            <Badge className={STATUS_COLORS[t.status] || ""}>{t.status}</Badge>
+                            <Badge variant="outline" className="text-xs">{t.tipe || "-"}</Badge>
+                          </td>
+                          <td className="px-4 py-2">Semester {t.semester}</td>
+                          <td className="px-4 py-2">Rp {(t.total || 0).toLocaleString()}</td>
+                          <td className="px-4 py-2">
+                            <div className="flex items-center gap-2">
+                              <Badge className={STATUS_COLORS[t.status] || ""}>{t.status}</Badge>
+                              {t.isLunas && <CheckCircle className="w-4 h-4 text-green-500" />}
+                            </div>
                           </td>
                           <td className="px-4 py-2">
                             {t.jatuhTempo ? new Date(t.jatuhTempo).toLocaleDateString("id-ID") : "-"}
@@ -319,7 +350,33 @@ export default function TagihanPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Semester</Label>
+                  <Label>Judul Tagihan *</Label>
+                  <Input
+                    placeholder="e.g. SPP Semester 2"
+                    value={judul}
+                    onChange={(e) => setJudul(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipe *</Label>
+                  <Select value={tipe} onValueChange={setTipe}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="SPP">SPP</SelectItem>
+                      <SelectItem value="UKT">UKT</SelectItem>
+                      <SelectItem value="BIAYA_SKRIPSI">Biaya Skripsi</SelectItem>
+                      <SelectItem value="UANG_PRAKTIKUM">Uang Praktikum</SelectItem>
+                      <SelectItem value="LAINNYA">Lainnya</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Semester *</Label>
                   <Select value={semester} onValueChange={setSemester}>
                     <SelectTrigger>
                       <SelectValue />
@@ -334,14 +391,37 @@ export default function TagihanPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Jatuh Tempo</Label>
-                  <Input type="date" value={jatuhTempo} onChange={(e) => setJatuhTempo(e.target.value)} />
+                  <Label>Tahun Ajaran</Label>
+                  <Input
+                    placeholder="e.g. 2025/2026"
+                    value={tahunAjaran}
+                    onChange={(e) => setTahunAjaran(e.target.value)}
+                  />
                 </div>
               </div>
 
-              {/* Items */}
-              <div className="space-y-2">
-                <Label>Items Tagihan</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Jatuh Tempo</Label>
+                  <Input type="date" value={jatuhTempo} onChange={(e) => setJatuhTempo(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Diskon (Rp)</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={diskon}
+                    onChange={(e) => setDiskon(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Items (Optional Breakdown) */}
+              <div className="space-y-2 border rounded-lg p-4 bg-slate-50/50">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium text-slate-700">Detail Items (Opsional)</Label>
+                  <span className="text-xs text-slate-400">Untuk breakdown detail tagihan</span>
+                </div>
                 {items.map((item, index) => (
                   <div key={index} className="flex gap-2">
                     <Input
@@ -370,9 +450,17 @@ export default function TagihanPage() {
 
               {/* Total */}
               <div className="p-3 bg-slate-50 rounded-lg">
-                <p className="font-medium">
-                  Total: <span className="text-[#2563EB]">Rp {totalItems.toLocaleString()}</span>
-                </p>
+                <div className="flex justify-between items-center">
+                  <p className="text-sm text-slate-500">
+                    Subtotal: Rp {totalItems.toLocaleString()}
+                    {parseInt(diskon || "0") > 0 && (
+                      <span className="text-red-500"> — Diskon: Rp {parseInt(diskon).toLocaleString()}</span>
+                    )}
+                  </p>
+                  <p className="font-medium">
+                    Total: <span className="text-[#2563EB]">Rp {Math.max(0, totalItems - parseInt(diskon || "0")).toLocaleString()}</span>
+                  </p>
+                </div>
               </div>
 
               {/* Target */}

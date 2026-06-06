@@ -50,6 +50,16 @@ export async function POST(request: Request) {
       expiresIn: SESSION_MAX_AGE * 1000,
     });
 
+    // Generate Firebase Custom Token
+    let firebaseToken = "";
+    if (adminAuth) {
+      try {
+        firebaseToken = await adminAuth.createCustomToken(uid);
+      } catch (tokenErr) {
+        console.error("[ADMIN LOGIN] Failed to create custom token:", tokenErr);
+      }
+    }
+
     const response = NextResponse.json({
       success: true,
       user: {
@@ -58,6 +68,7 @@ export async function POST(request: Request) {
         name: adminData.name,
         role: adminData.role,
       },
+      firebaseToken,
     });
 
     response.headers.set("Set-Cookie", createSessionCookie(sessionCookie));

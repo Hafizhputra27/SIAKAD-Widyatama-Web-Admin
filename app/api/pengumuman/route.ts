@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { title, content, isActive = true } = body;
+    const { title, content, isActive = true, priority = "NORMAL" } = body;
 
     if (!title || !content) {
       return NextResponse.json({ error: "Judul dan konten wajib diisi" }, { status: 400 });
@@ -41,6 +41,7 @@ export async function POST(request: Request) {
       title,
       content,
       isActive,
+      priority,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

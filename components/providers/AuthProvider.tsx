@@ -40,6 +40,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const res = await fetch("/api/auth/me", { credentials: "include" });
         const data = await res.json();
         if (data.user) {
+          // Tunggu sampai Firebase Auth selesai memproses state login-nya
+          await new Promise<void>((resolve) => {
+            const unsubscribe = auth.onAuthStateChanged(() => {
+              unsubscribe();
+              resolve();
+            });
+          });
           setUser(data.user);
         } else {
           // Session tidak valid, force sign out dari Firebase client
@@ -47,7 +54,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch {
         // Session error, force sign out dari Firebase client
-        await signOut(auth);
+        try {
+          await signOut(auth);
+        } catch {}
       } finally {
         setIsLoading(false);
       }
