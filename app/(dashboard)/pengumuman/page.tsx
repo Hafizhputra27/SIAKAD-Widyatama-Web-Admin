@@ -23,6 +23,7 @@ import {
 import { toast } from "react-hot-toast";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/src/lib/firebase";
+import { useAuth } from "@/components/providers/AuthProvider";
 import { Plus, Pencil, Trash2, Megaphone, Loader2, Save } from "lucide-react";
 
 interface Pengumuman {
@@ -35,6 +36,7 @@ interface Pengumuman {
 }
 
 export default function PengumumanPage() {
+  const { isFirebaseReady } = useAuth();
   const [pengumumanList, setPengumumanList] = useState<Pengumuman[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -49,6 +51,8 @@ export default function PengumumanPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (!isFirebaseReady) return;
+
     setLoading(true);
     const unsub = onSnapshot(
       collection(db, "pengumuman"),
@@ -68,10 +72,15 @@ export default function PengumumanPage() {
           .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
         setPengumumanList(data);
         setLoading(false);
+      },
+      (error) => {
+        console.error("Error loading pengumuman:", error);
+        toast.error("Gagal memuat pengumuman");
+        setLoading(false);
       }
     );
     return () => unsub();
-  }, []);
+  }, [isFirebaseReady]);
 
   const resetForm = () => {
     setTitle("");

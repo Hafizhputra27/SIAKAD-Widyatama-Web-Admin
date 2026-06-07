@@ -7,7 +7,11 @@ import {
   useEffect,
   ReactNode,
 } from "react";
-import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import {
+  signInWithEmailAndPassword,
+  signInWithCustomToken,
+  signOut,
+} from "firebase/auth";
 import { auth } from "@/src/lib/firebase";
 import { useRouter } from "next/navigation";
 
@@ -22,6 +26,7 @@ interface AuthContextType {
   user: AdminUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isFirebaseReady: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -31,6 +36,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFirebaseReady, setIsFirebaseReady] = useState(false);
   const router = useRouter();
 
   // Cek session saat mount
@@ -40,23 +46,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const res = await fetch("/api/auth/me", { credentials: "include" });
         const data = await res.json();
         if (data.user) {
-          // Tunggu sampai Firebase Auth selesai memproses state login-nya
-          await new Promise<void>((resolve) => {
-            const unsubscribe = auth.onAuthStateChanged(() => {
-              unsubscribe();
-              resolve();
-            });
-          });
+          if (data.firebaseToken) {
+            try {
+              await signInWithCustomToken(auth, data.firebaseToken);
+              setIsFirebaseReady(true);
+            } catch (fbErr) {
+              console.error("[AuthProvider] Firebase client auth failed:", fbErr);
+              setIsFirebaseReady(!!auth.currentUser);
+            }
+          } else {
+            setIsFirebaseReady(!!auth.currentUser);
+          }
           setUser(data.user);
         } else {
-          // Session tidak valid, force sign out dari Firebase client
           await signOut(auth);
+          setIsFirebaseReady(false);
         }
       } catch {
-        // Session error, force sign out dari Firebase client
         try {
           await signOut(auth);
         } catch {}
+        setIsFirebaseReady(false);
       } finally {
         setIsLoading(false);
       }
@@ -67,11 +77,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      // Step 1: Login dengan Firebase Auth client
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const idToken = await userCredential.user.getIdToken();
 
-      // Step 2: Kirim ID token ke API untuk verifikasi dan set session cookie
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -81,15 +89,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await res.json();
 
       if (!res.ok) {
-        // Sign out dari Firebase client jika API menolak
         await signOut(auth);
+        setIsFirebaseReady(false);
         throw new Error(data.error || "Login gagal");
       }
 
+      if (data.firebaseToken) {
+        try {
+          await signInWithCustomToken(auth, data.firebaseToken);
+        } catch (fbErr) {
+          console.error("[AuthProvider] Firebase client login auth failed:", fbErr);
+        }
+      }
+
       setUser(data.user);
-      // Redirect handled by caller
+      setIsFirebaseReady(!!auth.currentUser);
     } catch (error) {
       await signOut(auth);
+      setIsFirebaseReady(false);
       throw error;
     } finally {
       setIsLoading(false);
@@ -102,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
       await signOut(auth);
       setUser(null);
+      setIsFirebaseReady(false);
       router.push("/login");
     } catch {
       // Silent fail
@@ -116,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isLoading,
         isAuthenticated: !!user,
+        isFirebaseReady,
         login,
         logout,
       }}

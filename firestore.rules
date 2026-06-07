@@ -78,10 +78,9 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // TAGIHAN
+    // TAGIHAN (legacy top-level — unused; data aktual di subcollection mahasiswa/{npm}/tagihan)
     // ============================================================
     match /tagihan/{tagihanId} {
-      // Mahasiswa bisa baca tagihan sendiri, Admin bisa baca semua
       allow read: if request.auth != null && (
         isAdmin() ||
         resource.data.npm == getUserNpm(request.auth.token.email)
@@ -131,6 +130,28 @@ service cloud.firestore {
     // ============================================================
     // academic_results disimpan sebagai subcollection: /mahasiswa/{npm}/academic_results
     match /mahasiswa/{npm}/academic_results/{resultId} {
+      allow read: if request.auth != null && (
+        isAdmin() ||
+        getUserNpm(request.auth.token.email) == npm
+      );
+      allow write: if false;
+    }
+
+    // ============================================================
+    // TAGIHAN (subcollection mahasiswa)
+    // ============================================================
+    match /mahasiswa/{npm}/tagihan/{tagihanId} {
+      allow read: if request.auth != null && (
+        isAdmin() ||
+        getUserNpm(request.auth.token.email) == npm
+      );
+      allow write: if false;
+    }
+
+    // ============================================================
+    // TRANSKRIP (subcollection mahasiswa)
+    // ============================================================
+    match /mahasiswa/{npm}/transkrip/{transkripId} {
       allow read: if request.auth != null && (
         isAdmin() ||
         getUserNpm(request.auth.token.email) == npm
